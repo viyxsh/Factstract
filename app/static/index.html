@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>FactLens</title>
+    <link rel="stylesheet" href="/app/static/styles.css" />
+    <script type="module" src="/app/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="rail">
+        <div class="brand">
+          <h1>FactLens</h1>
+          <p class="brand-subtitle">Grounded facts, comparisons, evidence, failures.</p>
+        </div>
+
+        <section class="rail-card upload-card">
+          <div class="upload-copy">
+            <p class="card-label">Ingest</p>
+            <p class="card-title">Upload PDFs or load demo data</p>
+          </div>
+          <div class="upload-actions">
+            <button class="button button-primary" id="uploadTrigger" type="button">Upload PDFs</button>
+            <button class="button button-secondary" id="demoLoadTrigger" type="button">Load demo</button>
+            <input id="fileInput" type="file" accept="application/pdf" multiple hidden />
+          </div>
+        </section>
+
+        <section class="rail-card status-card">
+          <div class="status-row">
+            <span class="status-dot" id="healthDot" aria-hidden="true"></span>
+            <span id="healthText">Checking API...</span>
+          </div>
+          <p class="muted" id="healthDetail">Waiting for `/api/health`.</p>
+        </section>
+
+        <nav class="document-nav" aria-label="Documents">
+          <div class="section-header">
+            <span class="card-label">Document rail</span>
+            <span class="muted" id="documentCount">0 docs</span>
+          </div>
+          <div id="documentList" class="document-list"></div>
+        </nav>
+      </aside>
+
+      <main class="workspace">
+        <header class="hero">
+          <div class="stats-grid" id="statsGrid">
+            <article class="stat-card">
+              <span class="stat-label">Facts</span>
+              <strong id="factCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Documents</span>
+              <strong id="docCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Relationships</span>
+              <strong id="relationshipCount">0</strong>
+            </article>
+            <article class="stat-card">
+              <span class="stat-label">Failures</span>
+              <strong id="failureCount">0</strong>
+            </article>
+          </div>
+        </header>
+
+        <section class="rail-card" id="jobBanner" hidden>
+          <div class="job-banner">
+            <div>
+              <p class="card-label">Processing</p>
+              <p class="card-title" id="jobTitle">Queued job</p>
+            </div>
+            <div class="job-meta">
+              <span id="jobState">queued</span>
+              <span id="jobProgress">0%</span>
+            </div>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill" id="jobProgressFill"></div>
+          </div>
+          <p class="muted" id="jobMessage"></p>
+        </section>
+
+        <div class="tabs" role="tablist" aria-label="Fact knowledge tabs">
+          <button class="tab is-active" role="tab" data-tab="facts" aria-selected="true">Facts</button>
+          <button class="tab" role="tab" data-tab="relationships" aria-selected="false">Relationships</button>
+          <button class="tab" role="tab" data-tab="evidence" aria-selected="false">Evidence</button>
+          <button class="tab" role="tab" data-tab="failures" aria-selected="false">Known failures</button>
+        </div>
+
+        <section class="panel-stack">
+          <section class="panel" data-panel="facts">
+            <div class="section-header">
+              <div>
+                <p class="card-label">Facts</p>
+                <h3 id="factsHeading">Grounded facts</h3>
+              </div>
+              <div class="filters">
+                <label class="filter-control">
+                  <span class="filter-label">Document</span>
+                  <input
+                    id="documentSearch"
+                    class="filter-search"
+                    type="search"
+                    placeholder="Search documents"
+                    autocomplete="off"
+                  />
+                  <button
+                    id="documentDropdownToggle"
+                    class="filter-chevron"
+                    type="button"
+                    aria-label="Show document list"
+                    aria-expanded="false"
+                  >
+                    <span aria-hidden="true">▾</span>
+                  </button>
+                  <ul id="documentOptions" class="filter-options" hidden></ul>
+                </label>
+              </div>
+            </div>
+            <div id="factsList" class="card-list"></div>
+          </section>
+
+          <section class="panel" data-panel="relationships" hidden>
+            <div class="section-header">
+              <div>
+                <p class="card-label">Relationships</p>
+                <h3>Comparisons across documents</h3>
+              </div>
+              <div class="filters">
+                <button class="chip chip-good" type="button" data-kind-filter="corroborates" aria-pressed="true">Corroborates</button>
+                <button class="chip chip-bad" type="button" data-kind-filter="contradicts" aria-pressed="true">Contradicts</button>
+                <button class="chip chip-warn" type="button" data-kind-filter="reconciles" aria-pressed="true">Reconciled</button>
+              </div>
+            </div>
+            <div id="relationshipsList" class="card-list"></div>
+          </section>
+
+          <section class="panel" data-panel="evidence" hidden>
+            <div class="section-header">
+              <div>
+                <p class="card-label">Evidence</p>
+                <h3>Exact quote and source page</h3>
+              </div>
+              <p class="muted">Click any fact to load the evidence drawer.</p>
+            </div>
+            <div class="evidence-layout">
+              <div id="evidenceList" class="card-list evidence-list"></div>
+              <aside class="evidence-drawer" id="evidenceDrawer">
+                <div class="drawer-header">
+                  <p class="card-label">Selected evidence</p>
+                  <h4 id="evidenceTitle">Nothing selected</h4>
+                </div>
+                <div class="drawer-body">
+                  <p class="evidence-meta" id="evidenceMeta"></p>
+                  <blockquote id="evidenceQuote" class="evidence-quote"></blockquote>
+                  <p class="muted" id="evidenceStatus"></p>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="panel" data-panel="failures" hidden>
+            <div class="section-header">
+              <div>
+                <p class="card-label">Known failures</p>
+                <h3>Explicitly surfaced gaps</h3>
+              </div>
+            </div>
+            <div id="failuresList" class="card-list"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

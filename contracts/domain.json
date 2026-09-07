@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fact Knowledge Layer domain snapshot",
+  "type": "object",
+  "required": ["document", "fact", "relationship", "failure", "job"],
+  "properties": {
+    "document": {"type": "object", "required": ["id", "filename", "sha256", "page_count", "status"]},
+    "fact": {"type": "object", "required": ["id", "document_id", "page_number", "subject", "metric", "value_display", "quote", "grounding_status"]},
+    "relationship": {"type": "object", "required": ["id", "left_fact_id", "right_fact_id", "kind", "rationale"]},
+    "failure": {"type": "object", "required": ["id", "stage", "reason"]},
+    "job": {"type": "object", "required": ["id", "document_id", "status", "progress"]}
+  }
+}

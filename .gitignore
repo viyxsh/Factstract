@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.data/
+.DS_Store
+
+# Reference material (kept out of the public repo)
+Context/
+delhivery/
+india-macroeconomy/
+superjoin-vit-2026-assignment.pdf
