@@ -95,3 +95,15 @@ def test_repository_init_is_idempotent(tmp_path: Path):
     repo = Repository(str(tmp_path / "double.sqlite3"))
     repo.init()
     repo.init()
+
+
+def test_active_job_count_and_stuck_cleanup(repository: Repository):
+    document = repository.create_document(DocumentRecord(filename="x.pdf", sha256="h5", page_count=1, status="queued"))
+    assert repository.count_active_jobs() == 0
+    running = repository.create_job(JobRecord(document_id=int(document.id or 0), status="running"))
+    repository.create_job(JobRecord(document_id=int(document.id or 0), status="done", progress=1.0))
+    assert repository.count_active_jobs() == 1
+    marked = repository.mark_stuck_jobs_failed("restarted")
+    assert marked == 1
+    assert repository.count_active_jobs() == 0
+    assert repository.get_job(int(running.id or 0)).status == "failed"
