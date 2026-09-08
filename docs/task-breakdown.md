@@ -14,7 +14,7 @@ Rules for every task:
 | ID | Scope | Inputs | Output | Acceptance |
 | --- | --- | --- | --- | --- |
 | P01 | `app/pdf.py` | PDF bytes/text extraction rules | page text + chunking helpers | same PDF always yields same page/chunk IDs |
-| P02 | `app/openrouter.py` | OpenRouter HTTP contract | typed client + schema gate | mock transport test passes |
+| P02 | `app/gemini.py` | Gemini API contract + Files API cache | typed client + schema gate | mock SDK test passes |
 | P03 | `app/normalize.py` | unit/period/scoping rules | canonical comparison keys | `Cr` and `Bn` normalize to the same INR value |
 | P04 | `app/contracts.py` | domain entities | dataclasses or Pydantic models | models match `PROJECT_SPEC.md` fields |
 | P05 | `app/db.py` | SQLite persistence rules | schema + CRUD helpers | round-trip insert/read test passes |

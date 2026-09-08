@@ -47,3 +47,21 @@ def test_load_demo_is_idempotent():
         second = load_demo(repo)
         assert first == second
         assert len(repo.list_facts()) == first["facts"]
+
+
+def test_delete_demo_seed_keeps_user_uploads():
+    from app.contracts import DocumentRecord
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        repo = Repository(str(Path(tmpdir) / "demo.sqlite3"))
+        repo.init()
+        load_demo(repo)
+        repo.create_document(
+            DocumentRecord(filename="mine.pdf", sha256="user-hash-1", page_count=2, status="done")
+        )
+        removed = repo.delete_demo_seed()
+        assert removed == 3
+        assert [doc.filename for doc in repo.list_documents()] == ["mine.pdf"]
+        assert repo.list_facts() == []
+        assert repo.list_relationships() == []
+        assert repo.list_failures() == []

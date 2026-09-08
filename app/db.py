@@ -16,6 +16,8 @@ from app.contracts import (
     RelationshipRecord,
 )
 
+DEMO_SHA_PREFIX = "demo-sha-"
+
 _DOCUMENT_FIELDS = {field.name for field in fields(DocumentRecord)}
 _JOB_FIELDS = {field.name for field in fields(JobRecord)}
 _FACT_FIELDS = {field.name for field in fields(FactRecord)}
@@ -273,6 +275,15 @@ class Repository:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS llm_files (
+            sha256 TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            uri TEXT NOT NULL DEFAULT '',
+            uploaded_at TEXT NOT NULL,
+            expires_at TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_documents_sha256 ON documents(sha256);
@@ -570,13 +581,104 @@ class Repository:
                 ).fetchall()
         return [_failure_from_row(row) for row in rows]
 
-    def delete_all_demo_records(self) -> None:
+    def get_llm_file(self, sha256: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT sha256, provider, file_name, uri, uploaded_at, expires_at FROM llm_files WHERE sha256 = ?",
+                (sha256,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def put_llm_file(
+        self,
+        sha256: str,
+        provider: str,
+        file_name: str,
+        uri: str = "",
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        with self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO llm_files (sha256, provider, file_name, uri, uploaded_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(sha256) DO UPDATE SET
+                    provider = excluded.provider,
+                    file_name = excluded.file_name,
+                    uri = excluded.uri,
+                    uploaded_at = excluded.uploaded_at,
+                    expires_at = excluded.expires_at
+                """,
+                (sha256, provider, file_name, uri, now, expires_at),
+            )
+            row = connection.execute(
+                "SELECT sha256, provider, file_name, uri, uploaded_at, expires_at FROM llm_files WHERE sha256 = ?",
+                (sha256,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("stored llm file was not readable")
+        return dict(row)
+
+    def get_llm_file_by_name(self, file_name: str) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT sha256, provider, file_name, uri, uploaded_at, expires_at FROM llm_files WHERE file_name = ?",
+                (file_name,),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
+    def delete_llm_file(self, sha256: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM llm_files WHERE sha256 = ?", (sha256,))
+
+    def count_active_jobs(self) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM jobs WHERE status IN ('queued', 'running')"
+            ).fetchone()
+        return int(row[0]) if row is not None else 0
+
+    def mark_stuck_jobs_failed(self, message: str) -> int:
+        """Fail jobs left non-terminal by a restart so they never block resets."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE jobs SET status = 'failed', error = ?, updated_at = ? "
+                "WHERE status IN ('queued', 'running')",
+                (message, _utc_now()),
+            )
+            return cursor.rowcount
+
+    def delete_document_data(self, document_id: int) -> None:
+        """Delete a document's derived rows (facts cascade to relationships,
+        plus failures) so reprocessing replaces instead of duplicating."""
+        with self._connect() as connection:
+            connection.execute("DELETE FROM facts WHERE document_id = ?", (document_id,))
+            connection.execute("DELETE FROM failures WHERE document_id = ?", (document_id,))
+
+    def delete_demo_seed(self) -> int:
+        """Remove demo-seeded documents and everything cascaded from them
+        (facts, failures, jobs, relationships). User uploads are kept.
+        Returns the number of documents removed."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM documents WHERE sha256 LIKE ?",
+                (DEMO_SHA_PREFIX + "%",),
+            )
+            return cursor.rowcount
+
+    def clear_all(self) -> None:
+        """Wipe every table. Used for full resets (fresh dashboard)."""
         with self._connect() as connection:
             connection.execute("DELETE FROM relationships")
             connection.execute("DELETE FROM facts")
             connection.execute("DELETE FROM failures")
             connection.execute("DELETE FROM jobs")
             connection.execute("DELETE FROM documents")
+            connection.execute("DELETE FROM llm_files")
+
+    def delete_all_demo_records(self) -> None:
+        self.clear_all()
 
 
 __all__ = ["Repository"]

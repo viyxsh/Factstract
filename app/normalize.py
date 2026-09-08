@@ -155,7 +155,10 @@ def normalize_fact(
         multiplier = _value_to_inr_multiplier(unit_key)
         canonical_value_inr = numeric_value * multiplier
 
-    comparison_key = "|".join((subject_key, metric_key, period_key, scope_key))
+    # Grouping key is subject+metric only. Period/scope stay on separate keys
+    # so the comparator can reconcile (differing vintage/scope) instead of
+    # silently splitting those facts into incomparable groups.
+    comparison_key = "|".join((subject_key, metric_key))
     return NormalizedFact(
         subject_key=subject_key,
         metric_key=metric_key,

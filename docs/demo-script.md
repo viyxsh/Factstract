@@ -27,7 +27,7 @@ Use this as the reviewer runbook once the API and UI are wired up.
 
 ## Notes
 
-- Demo mode does not require `OPENROUTER_API_KEY`.
+- Demo mode does not require `GEMINI_API_KEY`.
 - Uploads surface a job state while processing.
 - Every visible quote comes from stored evidence, not synthesized UI
   text.

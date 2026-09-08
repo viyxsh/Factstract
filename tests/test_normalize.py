@@ -47,10 +47,11 @@ def test_crore_and_billion_canonicalize_to_same_inr_value():
     assert cr.comparison_key == bn.comparison_key
 
 
-def test_period_difference_produces_different_comparison_keys():
+def test_period_difference_keeps_comparison_key_for_reconciliation():
     a = normalize.normalize_fact("X", "y", "1", unit="percent", period="FY25", scope="India")
     b = normalize.normalize_fact("X", "y", "2", unit="percent", period="FY24", scope="India")
-    assert a.comparison_key != b.comparison_key
+    assert a.comparison_key == b.comparison_key
+    assert a.period_key != b.period_key
 
 
 def test_parse_decimal_handles_commas_and_parens():

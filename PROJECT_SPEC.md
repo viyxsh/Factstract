@@ -9,7 +9,7 @@ Build a local-first prototype that accepts PDFs, extracts grounded facts, compar
 - A single FastAPI service serves both the JSON API and a dependency-free dark web UI.
 - SQLite is the only datastore. Uploaded files and database state live under `.data/` and are never committed.
 - PyMuPDF extracts text by page. Scanned/image-only pages are reported as failures; OCR is out of scope.
-- OpenRouter is used only through `app.openrouter.OpenRouterClient`; no route or UI code calls an LLM directly.
+- Gemini is used only through `app.gemini.GeminiClient`; no route or UI code calls an LLM directly. PDFs are uploaded once via the Files API and the cached handle is reused across extraction windows.
 - The first version extracts a conservative, small number of facts per chunk. It does not claim exhaustive document coverage.
 - There is no graph database, vector database, authentication, background queue service, or hard-coded production facts.
 
