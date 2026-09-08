@@ -11,7 +11,7 @@ const state = {
   selectedFactId: null,
   selectedRelationshipId: null,
   selectedFailureId: null,
-  evidenceFactId: null,
+  expandedEvidenceIds: new Set(),
   health: null,
   relationshipFilters: { corroborates: true, contradicts: true, reconciles: true },
 };
@@ -29,26 +29,27 @@ const els = {
   factsList: document.getElementById("factsList"),
   relationshipsList: document.getElementById("relationshipsList"),
   evidenceList: document.getElementById("evidenceList"),
-  evidenceDrawer: document.getElementById("evidenceDrawer"),
-  evidenceTitle: document.getElementById("evidenceTitle"),
-  evidenceMeta: document.getElementById("evidenceMeta"),
-  evidenceQuote: document.getElementById("evidenceQuote"),
-  evidenceStatus: document.getElementById("evidenceStatus"),
   failuresList: document.getElementById("failuresList"),
   jobBanner: document.getElementById("jobBanner"),
   jobTitle: document.getElementById("jobTitle"),
-  jobState: document.getElementById("jobState"),
   jobProgress: document.getElementById("jobProgress"),
   jobProgressFill: document.getElementById("jobProgressFill"),
   jobMessage: document.getElementById("jobMessage"),
   uploadTrigger: document.getElementById("uploadTrigger"),
   demoLoadTrigger: document.getElementById("demoLoadTrigger"),
+  resetTrigger: document.getElementById("resetTrigger"),
+  resetModal: document.getElementById("resetModal"),
+  resetCancel: document.getElementById("resetCancel"),
+  resetConfirm: document.getElementById("resetConfirm"),
   fileInput: document.getElementById("fileInput"),
   tabs: Array.from(document.querySelectorAll(".tab")),
   panels: Array.from(document.querySelectorAll("[data-panel]")),
+  documentFilterControl: document.getElementById("documentFilterControl"),
   documentSearch: document.getElementById("documentSearch"),
   documentOptions: document.getElementById("documentOptions"),
+  documentDropdown: document.getElementById("documentDropdown"),
   documentDropdownToggle: document.getElementById("documentDropdownToggle"),
+  documentFilterLabel: document.getElementById("documentFilterLabel"),
   factsHeading: document.getElementById("factsHeading"),
   relationshipKindFilters: Array.from(document.querySelectorAll("[data-kind-filter]")),
 };
@@ -72,7 +73,7 @@ function escapeText(value) {
 }
 
 function formatPage(pageNumber) {
-  return pageNumber ? `p.${pageNumber}` : "p. ?";
+  return pageNumber ? `page ${pageNumber}` : "page ?";
 }
 
 function matchDocument(item) {
@@ -159,7 +160,7 @@ function renderHealth() {
   els.healthDot.classList.toggle("is-on", Boolean(state.health.llm_configured));
   els.healthText.textContent = state.health.ok ? "API online" : "API degraded";
   els.healthDetail.textContent = state.health.llm_configured
-    ? "Live LLM configured through OpenRouter."
+    ? "Live LLM configured through Gemini."
     : "Demo mode only. Live LLM key not configured.";
 }
 
@@ -217,7 +218,10 @@ function renderDocumentFilter() {
   const allOption = document.createElement("li");
   allOption.textContent = "All documents";
   allOption.dataset.value = "";
-  allOption.className = state.selectedDocumentId == null ? "is-active" : "";
+  allOption.setAttribute("role", "option");
+  if (state.selectedDocumentId == null) {
+    allOption.classList.add("is-active");
+  }
   if (!query || "all documents".includes(query)) {
     els.documentOptions.appendChild(allOption);
   }
@@ -233,6 +237,7 @@ function renderDocumentFilter() {
     option.textContent = doc.filename;
     option.dataset.value = String(doc.id);
     option.title = doc.filename;
+    option.setAttribute("role", "option");
     if (state.selectedDocumentId === doc.id) {
       option.classList.add("is-active");
     }
@@ -243,22 +248,38 @@ function renderDocumentFilter() {
     const empty = document.createElement("li");
     empty.className = "is-empty";
     empty.textContent = "No documents match.";
+    empty.setAttribute("role", "presentation");
     els.documentOptions.appendChild(empty);
   }
 
-  if (state.selectedDocumentId) {
-    const chosen = documents.find((doc) => doc.id === state.selectedDocumentId);
-    if (chosen && document.activeElement !== els.documentSearch) {
-      els.documentSearch.value = chosen.filename;
+  if (els.documentFilterLabel) {
+    if (state.selectedDocumentId) {
+      const chosen = documents.find((doc) => doc.id === state.selectedDocumentId);
+      els.documentFilterLabel.textContent = chosen ? chosen.filename : "All documents";
+    } else {
+      els.documentFilterLabel.textContent = "All documents";
     }
-  } else if (document.activeElement !== els.documentSearch) {
-    els.documentSearch.value = "";
   }
 }
 
 function factLabel(fact) {
   const parts = [fact.subject, fact.metric].filter(Boolean);
   return parts.join(" · ") || `Fact ${fact.id}`;
+}
+
+const EYE_OPEN_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+function eyeButton(open, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `icon-button${open ? " is-open" : ""}`;
+  button.innerHTML = open ? EYE_OPEN_SVG : EYE_OFF_SVG;
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  return button;
 }
 
 function renderFacts() {
@@ -279,8 +300,13 @@ function renderFacts() {
       card.style.borderColor = "rgba(90, 167, 255, 0.45)";
     }
 
+    const head = document.createElement("div");
+    head.className = "fact-head";
     const heading = document.createElement("h4");
     heading.textContent = factLabel(fact);
+    const openEvidence = eyeButton(false, "Open evidence");
+    openEvidence.addEventListener("click", () => openEvidenceForFact(fact.id));
+    head.append(heading, openEvidence);
 
     const meta = document.createElement("div");
     meta.className = "fact-meta";
@@ -300,23 +326,14 @@ function renderFacts() {
     quote.className = "muted";
     quote.textContent = fact.quote || "No quote available.";
 
-    const actions = document.createElement("div");
-    actions.className = "fact-actions";
-    const openEvidence = document.createElement("button");
-    openEvidence.type = "button";
-    openEvidence.className = "ghost-button";
-    openEvidence.textContent = "Open evidence";
-    openEvidence.addEventListener("click", () => openEvidenceForFact(fact.id));
-    actions.appendChild(openEvidence);
-
     card.addEventListener("click", () => {
       state.selectedFactId = fact.id;
-      state.evidenceFactId = fact.id;
+      state.expandedEvidenceIds.add(fact.id);
       state.selectedRelationshipId = null;
       renderAll();
     });
 
-    card.append(heading, meta, line, quote, actions);
+    card.append(head, meta, line, quote);
     els.factsList.appendChild(card);
   }
 }
@@ -351,8 +368,26 @@ function renderRelationships() {
       const sideLabel = document.createElement("p");
       sideLabel.className = "card-label";
       sideLabel.textContent = label;
+      const expanded = Boolean(fact) && state.expandedEvidenceIds.has(fact.id);
+      const sideHead = document.createElement("div");
+      sideHead.className = "fact-head";
       const sideTitle = document.createElement("h4");
       sideTitle.textContent = fact ? factLabel(fact) : "Missing fact";
+      const open = eyeButton(expanded, expanded ? "Hide evidence" : "View evidence");
+      open.disabled = !fact;
+      if (fact) {
+        open.setAttribute("aria-expanded", String(expanded));
+        open.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (expanded) {
+            state.expandedEvidenceIds.delete(fact.id);
+          } else {
+            state.expandedEvidenceIds.add(fact.id);
+          }
+          renderRelationships();
+        });
+      }
+      sideHead.append(sideTitle, open);
       const sideValue = document.createElement("div");
       sideValue.className = "metric-line";
       const main = document.createElement("strong");
@@ -360,18 +395,17 @@ function renderRelationships() {
       const unit = document.createElement("span");
       unit.textContent = fact ? `${escapeText(fact.unit)} · ${formatPage(fact.page_number)}` : "—";
       sideValue.append(main, unit);
-      const open = document.createElement("button");
-      open.type = "button";
-      open.className = "ghost-button";
-      open.textContent = "View evidence";
-      open.disabled = !fact;
+      side.append(sideLabel, sideHead, sideValue);
       if (fact) {
-        open.addEventListener("click", (event) => {
-          event.stopPropagation();
-          openEvidenceForFact(fact.id);
-        });
+        const detail = document.createElement("div");
+        detail.className = "relationship-evidence";
+        detail.hidden = !expanded;
+        const quote = document.createElement("blockquote");
+        quote.className = "evidence-quote";
+        quote.textContent = fact.quote || "No quote available.";
+        detail.appendChild(quote);
+        side.appendChild(detail);
       }
-      side.append(sideLabel, sideTitle, sideValue, open);
       return side;
     };
 
@@ -391,18 +425,29 @@ function renderRelationships() {
   }
 }
 
-function renderEvidencePanel(fact) {
-  if (!fact) {
-    els.evidenceTitle.textContent = "Nothing selected";
-    els.evidenceMeta.textContent = "";
-    els.evidenceQuote.textContent = "Choose a fact from the Evidence tab or use an evidence button on a card.";
-    els.evidenceStatus.textContent = "";
-    return;
+function evidenceSourceName(fact) {
+  const source = state.documents.find((doc) => doc.id === fact.document_id);
+  return source ? source.filename : `Document ${fact.document_id}`;
+}
+
+function displayValue(fact) {
+  const display = fact.value_display || "—";
+  const unit = (fact.unit || "").trim();
+  if (!unit) {
+    return display;
   }
-  els.evidenceTitle.textContent = factLabel(fact);
-  els.evidenceMeta.textContent = `${escapeText(fact.document_id)} · ${formatPage(fact.page_number)} · ${escapeText(fact.grounding_status)}`;
-  els.evidenceQuote.textContent = fact.quote || "No quote available.";
-  els.evidenceStatus.textContent = `Value: ${escapeText(fact.value_display)}${fact.unit ? ` ${fact.unit}` : ""}`;
+  const tokens = (value) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .filter(Boolean);
+  const unitTokens = tokens(unit).filter((token) => token.length > 2);
+  const displayTokens = new Set(tokens(display));
+  if (unitTokens.some((token) => displayTokens.has(token))) {
+    return display;
+  }
+  return `${display} ${unit}`;
 }
 
 function renderEvidenceList() {
@@ -410,33 +455,55 @@ function renderEvidenceList() {
   const facts = filteredFacts();
   if (!facts.length) {
     showEmpty(els.evidenceList, "No evidence to show for the selected document.");
-    renderEvidencePanel(null);
     return;
   }
   for (const fact of facts) {
+    const expanded = state.expandedEvidenceIds.has(fact.id);
     const card = document.createElement("article");
     card.className = "fact-card";
+    card.dataset.factId = String(fact.id);
+
+    const toggleEvidence = () => {
+      if (expanded) {
+        state.expandedEvidenceIds.delete(fact.id);
+      } else {
+        state.expandedEvidenceIds.add(fact.id);
+      }
+      renderEvidenceList();
+    };
+
+    const head = document.createElement("div");
+    head.className = "fact-head";
     const heading = document.createElement("h4");
     heading.textContent = factLabel(fact);
+    const eye = eyeButton(expanded, expanded ? "Hide evidence" : "Show evidence");
+    eye.setAttribute("aria-expanded", String(expanded));
+    eye.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleEvidence();
+    });
+    head.append(heading, eye);
+
     const meta = document.createElement("div");
     meta.className = "fact-meta";
-    meta.textContent = `${escapeText(fact.document_id)} · ${formatPage(fact.page_number)} · ${escapeText(fact.confidence)}`;
-    const quote = document.createElement("p");
-    quote.className = "muted";
+    const confidence = typeof fact.confidence === "number" ? `confidence ${Math.round(fact.confidence * 100)}%` : "confidence —";
+    meta.textContent = `${evidenceSourceName(fact)} · page ${fact.page_number} · ${confidence}`;
+
+    const detail = document.createElement("div");
+    detail.className = "evidence-detail";
+    detail.hidden = !expanded;
+    const quote = document.createElement("blockquote");
+    quote.className = "evidence-quote";
     quote.textContent = fact.quote || "No quote available.";
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ghost-button";
-    button.textContent = "Load into drawer";
-    button.addEventListener("click", () => openEvidenceForFact(fact.id));
-    card.append(heading, meta, quote, button);
+    const status = document.createElement("p");
+    status.className = "muted";
+    status.textContent = `Value: ${displayValue(fact)} · ${escapeText(fact.grounding_status)}`;
+    detail.append(quote, status);
+
+    card.addEventListener("click", toggleEvidence);
+    card.append(head, meta, detail);
     els.evidenceList.appendChild(card);
   }
-  const active = facts.find((fact) => fact.id === state.evidenceFactId) || facts[0];
-  if (active && !state.evidenceFactId) {
-    state.evidenceFactId = active.id;
-  }
-  renderEvidencePanel(active || null);
 }
 
 function renderFailures() {
@@ -453,7 +520,9 @@ function renderFailures() {
     heading.textContent = `${failure.stage || "failure"} · ${escapeText(failure.reason)}`;
     const meta = document.createElement("div");
     meta.className = "fact-meta";
-    meta.textContent = `${escapeText(failure.document_id)} · ${formatPage(failure.page_number)} · ${escapeText(failure.created_at)}`;
+    const source = state.documents.find((doc) => doc.id === failure.document_id);
+    const sourceName = source ? source.filename : `Document ${failure.document_id}`;
+    meta.textContent = `${sourceName} · page ${failure.page_number}`;
     const excerpt = document.createElement("p");
     excerpt.className = "muted";
     excerpt.textContent = failure.source_excerpt || "No excerpt available.";
@@ -483,9 +552,9 @@ function renderJob(job) {
   }
   els.jobBanner.hidden = false;
   els.jobTitle.textContent = job.document_id ? `Document ${job.document_id}` : "Background job";
-  els.jobState.textContent = job.status || "queued";
-  els.jobProgress.textContent = `${Math.round((job.progress || 0) * 100)}%`;
-  els.jobProgressFill.style.width = `${Math.round((job.progress || 0) * 100)}%`;
+  const percent = Math.min(100, Math.max(0, Math.round((job.progress || 0) * 100)));
+  els.jobProgress.textContent = `${percent}%`;
+  els.jobProgressFill.style.width = `${percent}%`;
   els.jobMessage.textContent = job.message || job.error || "Processing uploaded PDFs.";
 }
 
@@ -523,30 +592,23 @@ async function refreshAll() {
   state.facts = Array.isArray(facts) ? facts : [];
   state.relationships = Array.isArray(relationships) ? relationships : [];
   state.failures = Array.isArray(failures) ? failures : [];
-  if (!state.selectedDocumentId && state.documents[0]) {
-    state.selectedDocumentId = state.documents[0].id;
-  }
   if (state.selectedDocumentId && !state.documents.some((doc) => doc.id === state.selectedDocumentId)) {
-    state.selectedDocumentId = state.documents[0]?.id || null;
-  }
-  if (!state.evidenceFactId && state.facts[0]) {
-    state.evidenceFactId = state.facts[0].id;
+    state.selectedDocumentId = null;
   }
   renderSummary(summary);
   renderAll();
 }
 
 async function openEvidenceForFact(factId) {
-  state.evidenceFactId = factId;
-  const fact = state.facts.find((item) => item.id === factId);
-  if (!fact) {
-    renderEvidencePanel(null);
-    return;
-  }
-  renderEvidencePanel(fact);
+  state.expandedEvidenceIds.add(factId);
   if (state.selectedTab !== "evidence") {
     state.selectedTab = "evidence";
     renderPanels();
+  }
+  renderEvidenceList();
+  const card = els.evidenceList.querySelector(`[data-fact-id="${factId}"]`);
+  if (card && typeof card.scrollIntoView === "function") {
+    card.scrollIntoView({ block: "nearest" });
   }
 }
 
@@ -592,6 +654,21 @@ async function loadDemo() {
   await refreshAll();
 }
 
+async function resetAll() {
+  await request("/reset", { method: "POST", body: JSON.stringify({}) });
+  state.jobs.clear();
+  state.documents = [];
+  state.facts = [];
+  state.relationships = [];
+  state.failures = [];
+  state.selectedDocumentId = null;
+  state.selectedFactId = null;
+  state.selectedRelationshipId = null;
+  state.selectedFailureId = null;
+  state.expandedEvidenceIds.clear();
+  await refreshAll();
+}
+
 function bindEvents() {
   els.tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -606,7 +683,6 @@ function bindEvents() {
     handleUpload().catch((error) => {
       els.jobBanner.hidden = false;
       els.jobTitle.textContent = "Upload failed";
-      els.jobState.textContent = "failed";
       els.jobMessage.textContent = error.message;
       els.jobProgress.textContent = "0%";
       els.jobProgressFill.style.width = "0%";
@@ -616,39 +692,124 @@ function bindEvents() {
     loadDemo().catch((error) => {
       els.jobBanner.hidden = false;
       els.jobTitle.textContent = "Demo load failed";
-      els.jobState.textContent = "failed";
       els.jobMessage.textContent = error.message;
       els.jobProgress.textContent = "0%";
       els.jobProgressFill.style.width = "0%";
     });
   });
+  const openResetModal = () => {
+    if (!els.resetModal) {
+      return;
+    }
+    els.resetModal.hidden = false;
+    if (els.resetCancel) {
+      els.resetCancel.focus();
+    }
+  };
 
-  if (els.documentSearch && els.documentOptions) {
-    const closeOptions = () => {
-      els.documentOptions.hidden = true;
+  const closeResetModal = () => {
+    if (!els.resetModal) {
+      return;
+    }
+    els.resetModal.hidden = true;
+    if (els.resetTrigger) {
+      els.resetTrigger.focus();
+    }
+  };
+
+  els.resetTrigger.addEventListener("click", openResetModal);
+  if (els.resetCancel) {
+    els.resetCancel.addEventListener("click", closeResetModal);
+  }
+  if (els.resetModal) {
+    els.resetModal.addEventListener("click", (event) => {
+      if (event.target === els.resetModal) {
+        closeResetModal();
+      }
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && els.resetModal && !els.resetModal.hidden) {
+      closeResetModal();
+    }
+  });
+  if (els.resetConfirm) {
+    els.resetConfirm.addEventListener("click", () => {
+      closeResetModal();
+      resetAll().catch((error) => {
+        els.jobBanner.hidden = false;
+        els.jobTitle.textContent = "Reset failed";
+        els.jobMessage.textContent = error.message;
+        els.jobProgress.textContent = "0%";
+        els.jobProgressFill.style.width = "0%";
+      });
+    });
+  }
+
+  if (els.documentSearch && els.documentOptions && els.documentDropdown && els.documentFilterControl) {
+    const isOpen = () => !els.documentDropdown.hidden;
+
+    const closeDropdown = () => {
+      if (!isOpen()) {
+        return;
+      }
+      els.documentDropdown.hidden = true;
       if (els.documentDropdownToggle) {
         els.documentDropdownToggle.setAttribute("aria-expanded", "false");
       }
     };
 
-    const openOptions = () => {
-      els.documentOptions.hidden = false;
+    const openDropdown = () => {
+      if (isOpen()) {
+        return;
+      }
+      els.documentDropdown.hidden = false;
       if (els.documentDropdownToggle) {
         els.documentDropdownToggle.setAttribute("aria-expanded", "true");
       }
       renderDocumentFilter();
+      window.requestAnimationFrame(() => {
+        els.documentSearch.focus();
+      });
     };
 
-    els.documentSearch.addEventListener("focus", openOptions);
+    const toggleDropdown = () => {
+      if (isOpen()) {
+        closeDropdown();
+      } else {
+        openDropdown();
+      }
+    };
+
+    // Clicking anywhere on the chip (label, trigger, chevron, padding)
+    // toggles the menu, except clicks inside the open dropdown itself.
+    els.documentFilterControl.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target instanceof Node && els.documentDropdown.contains(target)) {
+        return;
+      }
+      event.stopPropagation();
+      toggleDropdown();
+    });
+
+    els.documentDropdown.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
     els.documentSearch.addEventListener("input", () => {
       renderDocumentFilter();
-      if (els.documentOptions.hidden) {
-        openOptions();
+    });
+    els.documentSearch.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!isOpen()) {
+        openDropdown();
       }
     });
     els.documentSearch.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
-        closeOptions();
+        event.stopPropagation();
+        closeDropdown();
+        els.documentDropdownToggle?.focus();
       } else if (event.key === "Enter") {
         event.preventDefault();
         const first = els.documentOptions.querySelector("li:not(.is-empty)");
@@ -658,39 +819,39 @@ function bindEvents() {
       }
     });
 
-    if (els.documentDropdownToggle) {
-      els.documentDropdownToggle.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (els.documentOptions.hidden) {
-          openOptions();
-          els.documentSearch.focus();
-        } else {
-          closeOptions();
-        }
-      });
-    }
-
     els.documentOptions.addEventListener("click", (event) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement) || !target.dataset || target.classList.contains("is-empty")) {
+      if (target instanceof HTMLElement && target.closest("li")) {
+        const item = target.closest("li");
+        if (!item || item.classList.contains("is-empty")) {
+          return;
+        }
+        event.stopPropagation();
+        const value = item.dataset.value;
+        state.selectedDocumentId = value ? Number(value) : null;
+        state.selectedFactId = null;
+        state.selectedRelationshipId = null;
+        state.selectedFailureId = null;
+        els.documentSearch.value = "";
+        closeDropdown();
+        renderAll();
         return;
       }
-      const value = target.dataset.value;
-      state.selectedDocumentId = value ? Number(value) : null;
-      state.selectedFactId = null;
-      state.selectedRelationshipId = null;
-      state.selectedFailureId = null;
-      els.documentSearch.value = value ? target.textContent || "" : "";
-      closeOptions();
-      renderAll();
     });
 
     document.addEventListener("click", (event) => {
-      if (!els.documentOptions.hidden) {
-        const target = event.target;
-        if (target instanceof Node && !els.documentOptions.parentElement?.contains(target)) {
-          closeOptions();
-        }
+      if (!isOpen()) {
+        return;
+      }
+      const target = event.target;
+      if (target instanceof Node && !els.documentFilterControl.contains(target)) {
+        closeDropdown();
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && isOpen()) {
+        closeDropdown();
       }
     });
   }
@@ -707,9 +868,20 @@ function bindEvents() {
 }
 
 bindEvents();
-refreshAll().catch((error) => {
-  state.health = { ok: false, llm_configured: false };
-  els.healthText.textContent = "API error";
-  els.healthDetail.textContent = error.message;
-  renderAll();
-});
+// Opening the project shows demo data: seed the showcase records when the
+// database is empty, otherwise leave the user's own documents alone.
+(async () => {
+  try {
+    const documents = await request("/documents");
+    if (!documents.length) {
+      await loadDemo();
+    } else {
+      await refreshAll();
+    }
+  } catch (error) {
+    state.health = { ok: false, llm_configured: false };
+    els.healthText.textContent = "API error";
+    els.healthDetail.textContent = error.message;
+    renderAll();
+  }
+})();

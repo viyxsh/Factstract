@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>FactLens</title>
+    <title>Factstract</title>
     <link rel="stylesheet" href="/app/static/styles.css" />
     <script type="module" src="/app/static/app.js" defer></script>
   </head>
@@ -12,19 +12,49 @@
     <div class="app-shell">
       <aside class="rail">
         <div class="brand">
-          <h1>FactLens</h1>
+          <h1>Factstract</h1>
           <p class="brand-subtitle">Grounded facts, comparisons, evidence, failures.</p>
         </div>
+
+        <section class="rail-card insight-card">
+          <div class="insight-head">
+            <span class="bulb-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>
+            </span>
+            <p class="card-label">Tip</p>
+          </div>
+          <p class="muted">Reset data before uploading your own PDFs so demo results don't mix with yours.</p>
+        </section>
 
         <section class="rail-card upload-card">
           <div class="upload-copy">
             <p class="card-label">Ingest</p>
-            <p class="card-title">Upload PDFs or load demo data</p>
           </div>
           <div class="upload-actions">
+            <p class="upload-hint">PDF only · up to 50 MB per file</p>
             <button class="button button-primary" id="uploadTrigger" type="button">Upload PDFs</button>
             <button class="button button-secondary" id="demoLoadTrigger" type="button">Load demo</button>
+            <button class="button button-danger" id="resetTrigger" type="button">Reset data</button>
             <input id="fileInput" type="file" accept="application/pdf" multiple hidden />
+          </div>
+          <div class="modal-backdrop" id="resetModal" hidden>
+            <div
+              class="modal"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="resetModalTitle"
+              aria-describedby="resetModalDesc"
+            >
+              <h3 id="resetModalTitle">Reset all data?</h3>
+              <p class="muted" id="resetModalDesc">
+                This permanently deletes every document, fact, relationship,
+                failure record, and uploaded PDF. This cannot be undone.
+              </p>
+              <div class="modal-actions">
+                <button class="button button-secondary" id="resetCancel" type="button">Cancel</button>
+                <button class="button button-danger" id="resetConfirm" type="button">Delete everything</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -73,11 +103,8 @@
               <p class="card-label">Processing</p>
               <p class="card-title" id="jobTitle">Queued job</p>
             </div>
-            <div class="job-meta">
-              <span id="jobState">queued</span>
-              <span id="jobProgress">0%</span>
-            </div>
           </div>
+          <div class="job-progress-row"><span id="jobProgress">0%</span></div>
           <div class="progress-track" aria-hidden="true">
             <div class="progress-fill" id="jobProgressFill"></div>
           </div>
@@ -99,26 +126,31 @@
                 <h3 id="factsHeading">Grounded facts</h3>
               </div>
               <div class="filters">
-                <label class="filter-control">
+                <div class="filter-control" id="documentFilterControl">
                   <span class="filter-label">Document</span>
-                  <input
-                    id="documentSearch"
-                    class="filter-search"
-                    type="search"
-                    placeholder="Search documents"
-                    autocomplete="off"
-                  />
                   <button
                     id="documentDropdownToggle"
-                    class="filter-chevron"
+                    class="filter-trigger"
                     type="button"
-                    aria-label="Show document list"
+                    aria-haspopup="listbox"
                     aria-expanded="false"
                   >
-                    <span aria-hidden="true">▾</span>
+                    <span id="documentFilterLabel">All documents</span>
+                    <span class="filter-chevron" aria-hidden="true">▾</span>
                   </button>
-                  <ul id="documentOptions" class="filter-options" hidden></ul>
-                </label>
+                  <div id="documentDropdown" class="filter-dropdown" hidden>
+                    <div class="filter-dropdown-search">
+                      <input
+                        id="documentSearch"
+                        class="filter-search"
+                        type="search"
+                        placeholder="Search documents"
+                        autocomplete="off"
+                      />
+                    </div>
+                    <ul id="documentOptions" class="filter-options" role="listbox"></ul>
+                  </div>
+                </div>
               </div>
             </div>
             <div id="factsList" class="card-list"></div>
@@ -145,22 +177,8 @@
                 <p class="card-label">Evidence</p>
                 <h3>Exact quote and source page</h3>
               </div>
-              <p class="muted">Click any fact to load the evidence drawer.</p>
             </div>
-            <div class="evidence-layout">
-              <div id="evidenceList" class="card-list evidence-list"></div>
-              <aside class="evidence-drawer" id="evidenceDrawer">
-                <div class="drawer-header">
-                  <p class="card-label">Selected evidence</p>
-                  <h4 id="evidenceTitle">Nothing selected</h4>
-                </div>
-                <div class="drawer-body">
-                  <p class="evidence-meta" id="evidenceMeta"></p>
-                  <blockquote id="evidenceQuote" class="evidence-quote"></blockquote>
-                  <p class="muted" id="evidenceStatus"></p>
-                </div>
-              </aside>
-            </div>
+            <div id="evidenceList" class="card-list"></div>
           </section>
 
           <section class="panel" data-panel="failures" hidden>
